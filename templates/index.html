@@ -13,13 +13,15 @@
         .card p { margin: 5px 0; font-size: 0.9em; }
         .card span { font-weight: bold; color: #ffffff; }
         #last-updated { text-align: center; margin-top: 20px; color: #aaa; }
+        .loading { text-align: center; font-size: 1.5em; color: #aaa; }
     </style>
 </head>
 <body>
 
     <h1>Real-Time Dex Screener Data</h1>
     <div id="data-container">
-        </div>
+        <p class="loading">Loading data, please wait...</p>
+    </div>
     <p id="last-updated"></p>
 
     <script>
@@ -28,14 +30,19 @@
 
         async function fetchData() {
             try {
-                // آدرس API که در Flask ساختیم را فراخوانی می‌کنیم
                 const response = await fetch('/api/data');
                 const data = await response.json();
 
-                // محتوای قبلی را پاک می‌کنیم
+                // *** تغییر اصلی اینجاست ***
+                // اگر داده‌ها هنوز خالی بودند، یک پیام نمایش بده و ۵ ثانیه بعد دوباره تلاش کن
+                if (data.length === 0) {
+                    dataContainer.innerHTML = '<p class="loading">Waiting for initial data from server... Retrying in 5 seconds.</p>';
+                    setTimeout(fetchData, 5000); // ۵ ثانیه بعد دوباره این تابع را اجرا کن
+                    return; // از ادامه تابع خارج شو
+                }
+
                 dataContainer.innerHTML = '';
 
-                // برای هر ارز، یک کارت گرافیکی می‌سازیم
                 data.forEach(pair => {
                     const card = document.createElement('div');
                     card.className = 'card';
