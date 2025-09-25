@@ -2,32 +2,50 @@
 from flask import Flask, jsonify, render_template
 from threading import Thread
 import requests
-import json
 import time
 
 # === بخش ۲: متغیرهای سراسری ===
 latest_data = []
 api_error = None 
 
-# === بخش ۳: منطق اصلی برنامه شما ===
+# === بخش ۳: منطق اصلی برنامه (با فیلترهای جدید) ===
 def fetch_data_and_update():
     global latest_data, api_error
     
-    # *** تغییر اصلی اینجاست: URL صحیح جایگزین شد ***
-    # به جای یک URL طولانی، ما پارامترها را به شکل استاندارد ارسال می‌کنیم
+    # بازه‌های نقدینگی برای جستجوی دقیق‌تر
+    liquidity_ranges = [
+        (50000, 75000), (75000, 100000), (100000, 150000),
+        (150000, 250000), (250000, 500000), (500000, 1000000)
+    ]
+    
+    all_pairs = {}
     base_url = "https://api.dexscreener.com/latest/dex/search"
-    params = {'q': 'liquidity > 50000 AND fdv > 500000 AND volume > 50000'}
     
     try:
-        # ارسال درخواست با پارامترهای جداگانه
-        response = requests.get(base_url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        # در API جدید، کلید اصلی 'pairs' است
-        latest_data = data.get('pairs', [])
+        for min_liq, max_liq in liquidity_ranges:
+            # *** تغییر اصلی اینجاست: اضافه شدن فیلترهای h6 و h24 ***
+            # priceChange > 5 یعنی تغییر قیمت بیش از ۵٪ مثبت باشد
+            query = (f"solana liquidity > {min_liq} AND liquidity < {max_liq} "
+                     f"AND fdv > 500000 AND volume > 50000 "
+                     f"AND priceChange.h6 > 5 AND priceChange.h24 > 5")
+            
+            params = {'q': query}
+            
+            print(f"در حال جستجو با فیلترهای جدید برای نقدینگی بین ${min_liq} و ${max_liq}...")
+            response = requests.get(base_url, params=params, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+            
+            pairs = data.get('pairs', [])
+            if pairs:
+                for pair in pairs:
+                    all_pairs[pair['pairAddress']] = pair
+            
+            time.sleep(1)
+
+        latest_data = list(all_pairs.values())
         api_error = None
-        print(f"[{time.strftime('%Y-%-m-%d %H:%M:%S')}] داده‌ها با موفقیت آپدیت شدند. تعداد: {len(latest_data)}")
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] عملیات با موفقیت تمام شد. تعداد ارزهای فیلتر شده: {len(latest_data)}")
     
     except requests.exceptions.RequestException as e:
         error_message = f"Error fetching data from Dexscreener: {e}"
@@ -35,13 +53,12 @@ def fetch_data_and_update():
         api_error = error_message
         latest_data = []
 
-# === بخش ۴: حلقه تکرار در پس‌زمینه ===
+# بقیه کد بدون تغییر است
 def background_task():
     while True:
         fetch_data_and_update()
-        time.sleep(600) # ۱۰ دقیقه
+        time.sleep(900)
 
-# === بخش ۵: وب‌سرور Flask ===
 app = Flask(__name__)
 
 @app.route('/')
@@ -50,21 +67,14 @@ def home():
 
 @app.route('/api/data')
 def get_data():
-    return jsonify({
-        'data': latest_data,
-        'error': api_error
-    })
+    return jsonify({'data': latest_data, 'error': api_error})
 
 def run_web_server():
     app.run(host='0.0.0.0', port=8080)
 
-# === بخش ۶: اجرای برنامه ===
 if __name__ == "__main__":
-    print("در حال دریافت داده‌های اولیه...")
-    fetch_data_and_update()
-
-    task_thread = Thread(target=background_task)
+    print("در حال اجرای عملیات اولیه...")
+    task_thread = Thread(target=fetch_data_and_update)
     task_thread.daemon = True
     task_thread.start()
-    
     run_web_server()
