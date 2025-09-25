@@ -1,130 +1,90 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Chain Crypto Dashboard</title>
-    <style>
-        body { font-family: sans-serif; background-color: #1a1a1a; color: #f0f0f0; margin: 0; padding: 20px; }
-        h1 { text-align: center; color: #4d94ff; margin-bottom: 40px;}
-        .chain-section { margin-bottom: 40px; }
-        .chain-title { font-size: 2em; color: #f0f0f0; text-transform: capitalize; border-bottom: 2px solid #4d94ff; padding-bottom: 10px; margin-bottom: 20px; }
-        .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
-        .card { background-color: #2c2c2c; border-radius: 8px; padding: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); transition: transform 0.2s ease, box-shadow 0.2s ease; display: flex; flex-direction: column; justify-content: space-between; height: 100%; box-sizing: border-box; }
-        .card:hover { transform: translateY(-5px); box-shadow: 0 8px 16px rgba(0,0,0,0.3); }
-        .card h2 { margin: 0 0 10px; font-size: 1.2em; color: #ffcc00; word-break: break-all; }
-        .card p { margin: 5px 0; font-size: 0.9em; }
-        .card span { font-weight: bold; color: #ffffff; }
-        #last-updated { text-align: center; margin-top: 20px; color: #aaa; }
-        .message { text-align: center; font-size: 1.2em; padding: 20px; margin: 20px; border-radius: 8px; }
-        .loading { color: #aaa; background-color: #2c2c2c; }
-        .error { color: #ffffff; background-color: #d32f2f; font-family: monospace; }
-        a { color: inherit; text-decoration: none; }
-        .gmgn-button { display: inline-block; margin-top: 15px; padding: 8px 12px; background-color: #3d3d3d; color: #4d94ff; text-align: center; border-radius: 5px; font-weight: bold; font-size: 0.8em; transition: background-color 0.2s ease; }
-        .gmgn-button:hover { background-color: #555; }
-        .positive { color: #4caf50; }
-        .negative { color: #f44336; }
-    </style>
-</head>
-<body>
+# === Section 1: Required Libraries ===
+from flask import Flask, jsonify, render_template
+from threading import Thread
+import requests
+import time
+import os
 
-    <h1>Multi-Chain Dex Screener</h1>
-    <div id="data-container">
-        <p class="message loading">Loading data for all chains, please wait...</p>
-    </div>
-    <p id="last-updated"></p>
+# === Section 2: Global Variables & Configuration ===
+CHAINS_TO_SCAN = ['solana', 'ethereum', 'bsc', 'base']
+all_known_pairs = {chain: {} for chain in CHAINS_TO_SCAN}
+# latest_data is now a list to preserve order
+latest_data = [] 
+api_error = None 
 
-    <script>
-        const dataContainer = document.getElementById('data-container');
-        const lastUpdatedElem = document.getElementById('last-updated');
+# === Section 3: Main Data Fetching and Filtering Logic ===
+def fetch_data_and_update():
+    global all_known_pairs, api_error, latest_data
+    
+    base_url = "https://api.dexscreener.com/latest/dex/search"
+    temp_latest_data = []
+    
+    try:
+        # Loop through each chain in our defined order
+        for chain in CHAINS_TO_SCAN:
+            print(f"--- Starting scan for {chain.upper()} ---")
+            params = {'q': f'{chain} fdv > 500000'}
+            
+            print(f"Sending initial request for {chain.upper()}...")
+            response = requests.get(base_url, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            raw_pairs = data.get('pairs', [])
+            
+            for pair in raw_pairs:
+                all_known_pairs[chain][pair['pairAddress']] = pair
 
-        async function fetchData() {
-            try {
-                const response = await fetch('/api/data');
-                const result = await response.json();
+            validated_pairs = {}
+            for pair_address, pair in all_known_pairs[chain].items():
+                try:
+                    if (
+                        pair.get('chainId') == chain and
+                        pair.get('liquidity', {}).get('usd', 0) > 50000 and
+                        pair.get('fdv', 0) > 500000 and
+                        pair.get('volume', {}).get('h24', 0) > 50000 and
+                        pair.get('priceChange', {}).get('h6', 0) > 0.005 and
+                        pair.get('priceChange', {}).get('h24', 0) > 0.005
+                    ):
+                        validated_pairs[pair_address] = pair
+                except (TypeError, ValueError):
+                    continue
+            
+            all_known_pairs[chain] = validated_pairs
+            # *** تغییر اصلی: ساخت یک لیست از آبجکت‌ها برای حفظ ترتیب ***
+            temp_latest_data.append({
+                "chain": chain,
+                "pairs": list(validated_pairs.values())
+            })
+            print(f"Scan for {chain.upper()} complete. Final valid pairs: {len(validated_pairs)}")
 
-                if (result.error) {
-                    dataContainer.innerHTML = `<div class="message error"><strong>Error:</strong><br>${result.error}</div>`;
-                    return;
-                }
+        # Update the global variable at the end
+        latest_data = temp_latest_data
+        api_error = None
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] All chains updated successfully.")
+    
+    except requests.exceptions.RequestException as e:
+        error_message = f"Error during data fetch: {e}"
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {error_message}")
+        api_error = error_message
 
-                const chainsDataArray = result.data;
-                dataContainer.innerHTML = ''; 
+# بقیه کد بدون تغییر است
+def background_task():
+    while True:
+        fetch_data_and_update()
+        time.sleep(300)
 
-                // *** تغییر اصلی: حالا به جای آبجکت، روی یک لیست (آرایه) حلقه می‌زنیم ***
-                chainsDataArray.forEach(chainObject => {
-                    const chainName = chainObject.chain;
-                    const pairs = chainObject.pairs;
+app = Flask(__name__)
+@app.route('/')
+def home(): return render_template('index.html')
+@app.route('/api/data')
+def get_data(): return jsonify({'data': latest_data, 'error': api_error})
+def run_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
 
-                    const section = document.createElement('div');
-                    section.className = 'chain-section';
-                    const title = document.createElement('h2');
-                    title.className = 'chain-title';
-                    title.textContent = chainName;
-                    section.appendChild(title);
-                    const cardGrid = document.createElement('div');
-                    cardGrid.className = 'card-grid';
-
-                    if (pairs.length === 0) {
-                        cardGrid.innerHTML = `<p class="message loading">No pairs found for ${chainName} matching the criteria...</p>`;
-                    } else {
-                        pairs.forEach(pair => {
-                            // ... (بقیه این بخش بدون تغییر است)
-                            if (!pair || !pair.baseToken || !pair.quoteToken) return;
-                            const card = document.createElement('div');
-                            card.className = 'card';
-                            const getSafeSymbol = (token) => token && token.symbol ? token.symbol : 'N/A';
-                            const getSafeNumber = (num) => num ? parseInt(num).toLocaleString() : 'N/A';
-                            const getSafePrice = (price) => price ? parseFloat(price).toFixed(6) : 'N/A';
-                            const getPriceChange = (priceChange) => {
-                                if (priceChange === undefined || priceChange === null) return 'N/A';
-                                const value = parseFloat(priceChange);
-                                const className = value >= 0 ? 'positive' : 'negative';
-                                const sign = value >= 0 ? '+' : '';
-                                return `<span class="${className}">${sign}${value.toFixed(2)}%</span>`;
-                            };
-                            const baseSymbol = getSafeSymbol(pair.baseToken);
-                            const quoteSymbol = getSafeSymbol(pair.quoteToken);
-                            const priceUsd = getSafePrice(pair.priceUsd);
-                            const liquidity = getSafeNumber(pair.liquidity ? pair.liquidity.usd : null);
-                            const marketCap = getSafeNumber(pair.fdv);
-                            const volume24h = getSafeNumber(pair.volume ? pair.volume.h24 : null);
-                            const change6h = getPriceChange(pair.priceChange ? pair.priceChange.h6 : null);
-                            const change24h = getPriceChange(pair.priceChange ? pair.priceChange.h24 : null);
-                            const gmgnUrl = `https://gmgn.ai/${pair.chainId}/token/${pair.baseToken.address}`;
-                            const dexscreenerUrl = `https://dexscreener.com/${pair.chainId}/${pair.pairAddress}`;
-                            card.innerHTML = `
-                                <div>
-                                    <a href="${dexscreenerUrl}" target="_blank" rel="noopener noreferrer"><h2>${baseSymbol} / ${quoteSymbol}</h2></a>
-                                    <p>Price (USD): <span>$${priceUsd}</span></p>
-                                    <p>Liquidity: <span>$${liquidity}</span></p>
-                                    <p>Market Cap: <span>$${marketCap}</span></p>
-                                    <p>Volume (24h): <span>$${volume24h}</span></p>
-                                    <p>Change (6h): ${change6h}</p>
-                                    <p>Change (24h): ${change24h}</p>
-                                </div>
-                                <div>
-                                    <a href="${gmgnUrl}" target="_blank" rel="noopener noreferrer" class="gmgn-button">Check Security on GMGN</a>
-                                </div>
-                            `;
-                            cardGrid.appendChild(card);
-                        });
-                    }
-                    section.appendChild(cardGrid);
-                    dataContainer.appendChild(section);
-                });
-                
-                lastUpdatedElem.textContent = `Last Updated: ${new Date().toLocaleTimeString()}`;
-
-            } catch (error) {
-                console.error('Error in fetchData function:', error);
-                dataContainer.innerHTML = `<div class="message error">A critical error occurred: ${error.message}. Please check the console.</div>`;
-            }
-        }
-
-        fetchData();
-        setInterval(fetchData, 60000);
-    </script>
-
-</body>
-</html>
+if __name__ == "__main__":
+    print("Starting background data fetching task...")
+    task_thread = Thread(target=background_task)
+    task_thread.daemon = True
+    task_thread.start()
+    run_web_server()
