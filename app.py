@@ -1,59 +1,62 @@
 # === بخش ۱: کتابخانه‌های لازم ===
-from flask import Flask
+# jsonify برای ارسال پاسخ JSON و render_template برای نمایش فایل HTML اضافه شده است
+from flask import Flask, jsonify, render_template
 from threading import Thread
 import requests
 import json
 import time
 
-# === بخش ۲: منطق اصلی برنامه شما (همان تابع قبلی) ===
-def fetch_and_save_data():
-    """
-    تابعی برای دریافت داده‌ها از Dexscreener و چاپ آن‌ها.
-    """
-    url = "https://api.dexscreener.com/api/v2/sdk/pairs/search?q=liquidity_gt_50000 AND fdv_gt_500000 AND volume_h24_gt_50000"
+# === بخش ۲: متغیر سراسری برای ذخیره آخرین داده‌ها ===
+# این متغیر آخرین لیست ارزهای دریافت شده را در حافظه نگه می‌دارد
+latest_data = []
 
+# === بخش ۳: منطق اصلی برنامه شما ===
+def fetch_data_and_update():
+    """
+    داده‌ها را از Dexscreener دریافت کرده و متغیر latest_data را آپدیت می‌کند.
+    """
+    global latest_data  # اعلام می‌کنیم که می‌خواهیم متغیر سراسری را تغییر دهیم
+    url = "https://api.dexscreener.com/api/v2/sdk/pairs/search?q=liquidity_gt_50000 AND fdv_gt_500000 AND volume_h24_gt_50000"
+    
     try:
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
-        filtered_pairs = data.get('pairs', [])
-
-        if filtered_pairs:
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] داده‌ها با موفقیت دریافت شدند. تعداد: {len(filtered_pairs)}")
-        else:
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] هیچ جفت ارزی با معیارهای مشخص شده یافت نشد.")
-
+        # فقط لیست ارزها را در متغیر ذخیره می‌کنیم
+        latest_data = data.get('pairs', [])
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] داده‌ها با موفقیت آپدیت شدند. تعداد: {len(latest_data)}")
+    
     except requests.exceptions.RequestException as e:
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] خطایی در هنگام ارسال درخواست رخ داد: {e}")
 
-
-# === بخش ۳: حلقه تکرار که در پس‌زمینه اجرا می‌شود ===
+# === بخش ۴: حلقه تکرار در پس‌زمینه ===
 def background_task():
-    """
-    این تابع در یک حلقه بی‌نهایت، تابع اصلی شما را هر ۱۰ دقیقه یک‌بار فراخوانی می‌کند.
-    """
     while True:
-        fetch_and_save_data()
-        # ۱۰ دقیقه = ۶۰۰ ثانیه
-        time.sleep(600)
+        fetch_data_and_update()
+        time.sleep(600) # ۱۰ دقیقه
 
+# === بخش ۵: وب‌سرور Flask ===
+app = Flask(__name__)
 
-# === بخش ۴: وب‌سرور برای زنده نگه داشتن Repl ===
-app = Flask('')
-
+# این آدرس، صفحه اصلی وب‌سایت را نمایش می‌دهد
 @app.route('/')
 def home():
-    return "Bot is alive and running!"
+    # این تابع به دنبال فایلی به نام index.html در پوشه templates می‌گردد
+    return render_template('index.html')
+
+# این آدرس، داده‌های ارزها را به صورت JSON برمی‌گرداند
+@app.route('/api/data')
+def get_data():
+    return jsonify(latest_data)
 
 def run_web_server():
+    # توجه: پوشه templates باید در کنار همین فایل app.py باشد
     app.run(host='0.0.0.0', port=8080)
 
-# === بخش ۵: اجرای همزمان وب‌سرور و حلقه تکرار ===
+# === بخش ۶: اجرای برنامه ===
 if __name__ == "__main__":
-    # اجرای تابع background_task در یک نخ (Thread) جداگانه
     task_thread = Thread(target=background_task)
     task_thread.daemon = True
     task_thread.start()
-
-    # اجرای وب‌سرور در نخ اصلی
+    
     run_web_server()
