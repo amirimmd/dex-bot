@@ -9,42 +9,45 @@ import os
 latest_data = []
 api_error = None 
 
-# === بخش ۳: منطق اصلی برنامه (با کوئری اصلاح‌شده) ===
+# === بخش ۳: منطق اصلی برنامه (با فیلتر دستی) ===
 def fetch_data_and_update():
     global latest_data, api_error
     
-    liquidity_ranges = [
-        (50000, 75000), (75000, 100000), (100000, 150000),
-        (150000, 250000), (250000, 500000), (500000, 1000000)
-    ]
+    # ما یک کوئری کلی‌تر ارسال می‌کنیم تا شانس پیدا کردن ارزها بیشتر شود
+    # و سپس خودمان در کد فیلترهای دقیق را اعمال می‌کنیم
+    base_url = "https://api.dexscreener.com/latest/dex/search"
+    params = {'q': 'solana fdv > 500000'} # فقط با یک فیلتر اصلی جستجو می‌کنیم
     
     all_pairs = {}
-    base_url = "https://api.dexscreener.com/latest/dex/search"
     
     try:
-        for min_liq, max_liq in liquidity_ranges:
-            # *** تغییر اصلی اینجاست: اصلاح فیلتر volume به volume.h24 ***
-            query = (f"solana liquidity > {min_liq} AND liquidity < {max_liq} "
-                     f"AND fdv > 500000 AND volume.h24 > 50000 " # این خط اصلاح شد
-                     f"AND priceChange.h6 > 5 AND priceChange.h24 > 5")
-            
-            params = {'q': query}
-            
-            print(f"در حال جستجو با فیلترهای صحیح برای نقدینگی بین ${min_liq} و ${max_liq}...")
-            response = requests.get(base_url, params=params, timeout=15)
-            response.raise_for_status()
-            data = response.json()
-            
-            pairs = data.get('pairs', [])
-            if pairs:
-                for pair in pairs:
-                    all_pairs[pair['pairAddress']] = pair
-            
-            time.sleep(1)
+        print("در حال ارسال درخواست به Dexscreener...")
+        response = requests.get(base_url, params=params, timeout=20)
+        response.raise_for_status()
+        data = response.json()
+        
+        raw_pairs = data.get('pairs', [])
+        print(f"تعداد {len(raw_pairs)} ارز اولیه دریافت شد. در حال فیلتر کردن دستی...")
+        
+        filtered_pairs = []
+        for pair in raw_pairs:
+            try:
+                # *** شروع فیلترهای دقیق و دستی ***
+                if (pair.get('chainId') == 'solana' and
+                    pair.get('liquidity', {}).get('usd', 0) > 50000 and
+                    pair.get('fdv', 0) > 500000 and
+                    pair.get('volume', {}).get('h24', 0) > 50000 and
+                    pair.get('priceChange', {}).get('h6', 0) > 5 and
+                    pair.get('priceChange', {}).get('h24', 0) > 5):
+                    
+                    filtered_pairs.append(pair)
+            except (TypeError, ValueError):
+                # اگر داده‌ای ناقص بود، از آن صرف نظر می‌کنیم
+                continue
 
-        latest_data = list(all_pairs.values())
+        latest_data = filtered_pairs
         api_error = None
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] عملیات با موفقیت تمام شد. تعداد ارزهای فیلتر شده: {len(latest_data)}")
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] عملیات با موفقیت تمام شد. تعداد ارزهای نهایی پس از فیلتر: {len(latest_data)}")
     
     except requests.exceptions.RequestException as e:
         error_message = f"Error fetching data from Dexscreener: {e}"
