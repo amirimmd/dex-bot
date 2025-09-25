@@ -51,7 +51,6 @@
                 const chainsDataArray = result.data;
                 dataContainer.innerHTML = ''; 
 
-                // *** تغییر اصلی: حالا به جای آبجکت، روی یک لیست (آرایه) حلقه می‌زنیم ***
                 chainsDataArray.forEach(chainObject => {
                     const chainName = chainObject.chain;
                     const pairs = chainObject.pairs;
@@ -69,7 +68,6 @@
                         cardGrid.innerHTML = `<p class="message loading">No pairs found for ${chainName} matching the criteria...</p>`;
                     } else {
                         pairs.forEach(pair => {
-                            // ... (بقیه این بخش بدون تغییر است)
                             if (!pair || !pair.baseToken || !pair.quoteToken) return;
                             const card = document.createElement('div');
                             card.className = 'card';
@@ -91,8 +89,11 @@
                             const volume24h = getSafeNumber(pair.volume ? pair.volume.h24 : null);
                             const change6h = getPriceChange(pair.priceChange ? pair.priceChange.h6 : null);
                             const change24h = getPriceChange(pair.priceChange ? pair.priceChange.h24 : null);
+                            
+                            // *** تغییر اصلی اینجاست: استفاده از chainId برای ساخت لینک صحیح ***
                             const gmgnUrl = `https://gmgn.ai/${pair.chainId}/token/${pair.baseToken.address}`;
                             const dexscreenerUrl = `https://dexscreener.com/${pair.chainId}/${pair.pairAddress}`;
+
                             card.innerHTML = `
                                 <div>
                                     <a href="${dexscreenerUrl}" target="_blank" rel="noopener noreferrer"><h2>${baseSymbol} / ${quoteSymbol}</h2></a>
