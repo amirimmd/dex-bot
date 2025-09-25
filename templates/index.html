@@ -33,15 +33,16 @@
         async function fetchData() {
             try {
                 const response = await fetch('/api/data');
-                const result = await response.json();
+                const result = await response.json(); // دریافت آبجکت کامل
 
-                // *** تغییر اصلی: ابتدا وجود خطا را بررسی می‌کنیم ***
+                // ابتدا وجود خطا را بررسی می‌کنیم
                 if (result.error) {
                     dataContainer.innerHTML = `<div class="message error"><strong>Error:</strong><br>${result.error}</div>`;
-                    return; // اگر خطا بود، ادامه نمی‌دهیم
+                    return;
                 }
 
-                const data = result.data;
+                // حالا لیست داده‌ها را از داخل آبجکت استخراج می‌کنیم
+                const data = result.data; 
 
                 if (data.length === 0) {
                     dataContainer.innerHTML = '<p class="message loading">Waiting for data from server...</p>';
@@ -50,6 +51,7 @@
 
                 dataContainer.innerHTML = '';
 
+                // و روی لیست استخراج شده، حلقه را اجرا می‌کنیم
                 data.forEach(pair => {
                     const card = document.createElement('div');
                     card.className = 'card';
