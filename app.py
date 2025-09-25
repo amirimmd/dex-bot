@@ -9,45 +9,49 @@ import os
 latest_data = []
 api_error = None 
 
-# === بخش ۳: منطق اصلی برنامه (با فیلتر دستی) ===
+# === بخش ۳: منطق اصلی برنامه (ترکیب استراتژی‌ها) ===
 def fetch_data_and_update():
     global latest_data, api_error
     
-    # ما یک کوئری کلی‌تر ارسال می‌کنیم تا شانس پیدا کردن ارزها بیشتر شود
-    # و سپس خودمان در کد فیلترهای دقیق را اعمال می‌کنیم
-    base_url = "https://api.dexscreener.com/latest/dex/search"
-    params = {'q': 'solana fdv > 500000'} # فقط با یک فیلتر اصلی جستجو می‌کنیم
+    # بازه‌های نقدینگی برای جستجوی سبک و تکه تکه
+    liquidity_ranges = [
+        (50000, 100000), (100000, 250000), (250000, 500000), (500000, 1000000)
+    ]
     
     all_pairs = {}
+    base_url = "https://api.dexscreener.com/latest/dex/search"
     
     try:
-        print("در حال ارسال درخواست به Dexscreener...")
-        response = requests.get(base_url, params=params, timeout=20)
-        response.raise_for_status()
-        data = response.json()
-        
-        raw_pairs = data.get('pairs', [])
-        print(f"تعداد {len(raw_pairs)} ارز اولیه دریافت شد. در حال فیلتر کردن دستی...")
-        
-        filtered_pairs = []
-        for pair in raw_pairs:
-            try:
-                # *** شروع فیلترهای دقیق و دستی ***
-                if (pair.get('chainId') == 'solana' and
-                    pair.get('liquidity', {}).get('usd', 0) > 50000 and
-                    pair.get('fdv', 0) > 500000 and
-                    pair.get('volume', {}).get('h24', 0) > 50000 and
-                    pair.get('priceChange', {}).get('h6', 0) > 5 and
-                    pair.get('priceChange', {}).get('h24', 0) > 5):
-                    
-                    filtered_pairs.append(pair)
-            except (TypeError, ValueError):
-                # اگر داده‌ای ناقص بود، از آن صرف نظر می‌کنیم
-                continue
+        # برای هر بازه نقدینگی، یک درخواست جداگانه ارسال می‌کنیم
+        for min_liq, max_liq in liquidity_ranges:
+            # کوئری سبک‌تر برای دریافت لیست اولیه
+            query = f"solana liquidity > {min_liq} AND liquidity < {max_liq}"
+            params = {'q': query}
+            
+            print(f"در حال دریافت داده برای نقدینگی بین ${min_liq} و ${max_liq}...")
+            response = requests.get(base_url, params=params, timeout=20)
+            response.raise_for_status()
+            data = response.json()
+            raw_pairs = data.get('pairs', [])
+            
+            # حالا روی لیست کوچک دریافت شده، فیلترهای دقیق را اعمال می‌کنیم
+            for pair in raw_pairs:
+                try:
+                    if (pair.get('fdv', 0) > 500000 and
+                        pair.get('volume', {}).get('h24', 0) > 50000 and
+                        pair.get('priceChange', {}).get('h6', 0) > 5 and
+                        pair.get('priceChange', {}).get('h24', 0) > 5):
+                        
+                        # از آدرس جفت‌ارز به عنوان کلید برای جلوگیری از تکرار استفاده می‌کنیم
+                        all_pairs[pair['pairAddress']] = pair
+                except (TypeError, ValueError):
+                    continue
+            
+            time.sleep(1) # وقفه کوتاه بین درخواست‌ها
 
-        latest_data = filtered_pairs
+        latest_data = list(all_pairs.values())
         api_error = None
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] عملیات با موفقیت تمام شد. تعداد ارزهای نهایی پس از فیلتر: {len(latest_data)}")
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] عملیات با موفقیت تمام شد. تعداد ارزهای نهایی: {len(latest_data)}")
     
     except requests.exceptions.RequestException as e:
         error_message = f"Error fetching data from Dexscreener: {e}"
@@ -62,7 +66,6 @@ def background_task():
         time.sleep(900)
 
 app = Flask(__name__)
-
 @app.route('/')
 def home():
     return render_template('index.html')
