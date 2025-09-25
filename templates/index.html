@@ -8,7 +8,7 @@
         body { font-family: sans-serif; background-color: #1a1a1a; color: #f0f0f0; margin: 0; padding: 20px; }
         h1 { text-align: center; color: #4d94ff; }
         #data-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
-        .card { background-color: #2c2c2c; border-radius: 8px; padding: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .card { background-color: #2c2c2c; border-radius: 8px; padding: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); transition: transform 0.2s ease, box-shadow 0.2s ease; display: flex; flex-direction: column; justify-content: space-between; height: 100%; box-sizing: border-box; }
         .card:hover { transform: translateY(-5px); box-shadow: 0 8px 16px rgba(0,0,0,0.3); }
         .card h2 { margin: 0 0 10px; font-size: 1.2em; color: #ffcc00; word-break: break-all; }
         .card p { margin: 5px 0; font-size: 0.9em; }
@@ -18,6 +18,23 @@
         .loading { color: #aaa; background-color: #2c2c2c; }
         .error { color: #ffffff; background-color: #d32f2f; font-family: monospace; }
         a { color: inherit; text-decoration: none; }
+        
+        /* *** استایل جدید برای دکمه *** */
+        .gmgn-button {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 8px 12px;
+            background-color: #3d3d3d;
+            color: #4d94ff;
+            text-align: center;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 0.8em;
+            transition: background-color 0.2s ease;
+        }
+        .gmgn-button:hover {
+            background-color: #555;
+        }
     </style>
 </head>
 <body>
@@ -52,41 +69,48 @@
                 dataContainer.innerHTML = '';
 
                 data.forEach(pair => {
-                    // *** تغییر اصلی اینجاست: چک کردن تمام مقادیر قبل از استفاده ***
                     if (!pair || !pair.baseToken || !pair.quoteToken) {
-                        return; // اگر اطلاعات اصلی توکن وجود نداشت، از این ارز صرف نظر کن
+                        return;
                     }
                 
-                    const link = document.createElement('a');
-                    link.href = `https://dexscreener.com/${pair.chainId}/${pair.pairAddress}`;
-                    link.target = '_blank';
-                    link.rel = 'noopener noreferrer';
+                    const dexscreenerLink = document.createElement('a');
+                    dexscreenerLink.href = `https://dexscreener.com/${pair.chainId}/${pair.pairAddress}`;
+                    dexscreenerLink.target = '_blank';
+                    dexscreenerLink.rel = 'noopener noreferrer';
 
                     const card = document.createElement('div');
                     card.className = 'card';
                     
-                    // توابع کمکی برای نمایش امن داده‌ها
                     const getSafeSymbol = (token) => token && token.symbol ? token.symbol : 'N/A';
                     const getSafeNumber = (num) => num ? parseInt(num).toLocaleString() : 'N/A';
                     const getSafePrice = (price) => price ? parseFloat(price).toFixed(6) : 'N/A';
                     
                     const baseSymbol = getSafeSymbol(pair.baseToken);
                     const quoteSymbol = getSafeSymbol(pair.quoteToken);
-                    
                     const priceUsd = getSafePrice(pair.priceUsd);
                     const liquidity = getSafeNumber(pair.liquidity ? pair.liquidity.usd : null);
                     const marketCap = getSafeNumber(pair.fdv);
 
+                    // *** تغییر اصلی اینجاست: ساخت لینک و دکمه برای GMGN ***
+                    // آدرس توکن اصلی (نه جفت ارز) را برای لینک GMGN استفاده می‌کنیم
+                    const gmgnUrl = `https://gmgn.ai/sol/token/${pair.baseToken.address}`;
+
                     card.innerHTML = `
-                        <h2>${baseSymbol} / ${quoteSymbol}</h2>
-                        <p>Price (USD): <span>$${priceUsd}</span></p>
-                        <p>Liquidity: <span>$${liquidity}</span></p>
-                        <p>Market Cap: <span>$${marketCap}</span></p>
-                        <p>Chain: <span>${pair.chainId || 'N/A'}</span></p>
+                        <div>
+                            <h2>${baseSymbol} / ${quoteSymbol}</h2>
+                            <p>Price (USD): <span>$${priceUsd}</span></p>
+                            <p>Liquidity: <span>$${liquidity}</span></p>
+                            <p>Market Cap: <span>$${marketCap}</span></p>
+                            <p>Chain: <span>${pair.chainId || 'N/A'}</span></p>
+                        </div>
+                        <div>
+                            <a href="${gmgnUrl}" target="_blank" rel="noopener noreferrer" class="gmgn-button">Check Security on GMGN</a>
+                        </div>
                     `;
 
-                    link.appendChild(card);
-                    dataContainer.appendChild(link);
+                    // توجه: کل کارت دیگر لینک به Dexscreener نیست، فقط دکمه به GMGN لینک دارد.
+                    // اگر می‌خواهید کل کارت به Dexscreener لینک شود، باید این خط را تغییر دهید.
+                    dataContainer.appendChild(card); 
                 });
                 
                 lastUpdatedElem.textContent = `Last Updated: ${new Date().toLocaleTimeString()}`;
