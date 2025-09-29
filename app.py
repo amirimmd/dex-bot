@@ -1,125 +1,137 @@
-# === Section 1: Required Libraries ===
-from flask import Flask, jsonify, render_template
-from threading import Thread
-import requests
-import time
+# برای اجرای این کد، ابتدا باید Playwright و نسخه سازگار Stealth را نصب کنید:
+# pip install --upgrade playwright
+# pip install playwright-stealth==1.0.6
+# playwright install
+
+import asyncio
+from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
+import re
+import json
+from datetime import datetime
+import webbrowser
 import os
+import time
+import http.server
+import socketserver
+import threading
 
-# === Section 2: Global Variables & Configuration ===
-CHAINS_TO_SCAN = ['solana', 'ethereum', 'bsc', 'base']
-all_known_pairs = {chain: {} for chain in CHAINS_TO_SCAN}
-# latest_data is now a list to preserve order
-latest_data = [] 
-api_error = None 
+# --- بخش وب سرور ---
+PORT = 8000
 
-# Define filter criteria globally to be passed to the frontend
-FILTER_CRITERIA = {
-    "min_liquidity_usd": 50000,
-    "min_fdv": 500000,
-    "min_volume_h24": 50000,
-    "min_price_change_h6_percent": 0.5, # Corresponds to 0.005
-    "min_price_change_h24_percent": 0.5 # Corresponds to 0.005
-}
+def run_server():
+    """یک وب سرور ساده برای ارائه فایل‌های محلی (index.html, data.json) اجرا می‌کند."""
+    Handler = http.server.SimpleHTTPRequestHandler
+    with socketserver.TCPServer(("", PORT), Handler) as httpd:
+        print(f"سرور محلی در آدرس http://localhost:{PORT} در حال اجراست")
+        httpd.serve_forever()
+
+# --- بخش استخراج داده ---
+def is_number_with_comma(s):
+    """بررسی می‌کند که آیا رشته یک عدد (احتمالا با کاما) است یا خیر."""
+    return bool(re.match(r'^[0-9,]+$', s))
+
+async def scrape_single_page(url: str):
+    """
+    داده‌ها را از یک صفحه استخراج می‌کند و در صورت نیاز به کاربر اجازه حل کپچا می‌دهد.
+    """
+    scraped_data = []
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=False)
+        context = await browser.new_context(
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+        )
+        page = await context.new_page()
+        await stealth_async(page)
+        
+        try:
+            print(f"در حال پردازش آدرس: {url}...")
+            await page.goto(url, wait_until="networkidle", timeout=90000)
+
+            captcha_locator = page.locator("text=/Cloudflare|Verifying you are human/i")
+            first_row_selector = "a[href^='/solana/']"
+
+            if await captcha_locator.count() > 0:
+                print("\n!!! کپچا شناسایی شد. لطفاً آن را به صورت دستی در پنجره مرورگر حل کنید...")
+                await page.wait_for_selector(first_row_selector, timeout=120000)
+                print("کپچا با موفقیت حل شد. ادامه می‌دهیم...")
+            else:
+                await page.wait_for_selector(first_row_selector, timeout=30000)
+            
+            rows = await page.query_selector_all(first_row_selector)
+            if not rows:
+                 print("هیچ ردیفی در صفحه پیدا نشد.")
+                 return []
+
+            print(f"تعداد {len(rows)} ردیف پیدا شد. در حال تجزیه اطلاعات...")
+            
+            for row_element in rows:
+                texts = await row_element.inner_text()
+                lines = [line.strip() for line in texts.split('\n') if line.strip()]
+                if len(lines) < 8: continue
+                
+                data = {
+                    'rank': lines[0] if lines[0].startswith('#') else 'N/A', 'symbol': lines[1], 'name': 'N/A', 'price': 'N/A',
+                    'volume': 'N/A', 'change_6h': 'N/A', 'change_24h': 'N/A', 'liquidity': 'N/A',
+                    'market_cap': 'N/A', 'href': "https://dexscreener.com" + await row_element.get_attribute('href')
+                }
+                
+                dollar_values = [l for l in lines if l.startswith('$')]
+                if dollar_values:
+                    data['price'] = dollar_values[0]
+                    if len(dollar_values) > 1: data['volume'] = dollar_values[1]
+                    if len(dollar_values) > 2: data['liquidity'] = dollar_values[-2]
+                    if len(dollar_values) > 3: data['market_cap'] = dollar_values[-1]
+
+                percentages = [l for l in lines if l.endswith('%')]
+                if len(percentages) >= 2:
+                    data['change_6h'] = percentages[-2]
+                    data['change_24h'] = percentages[-1]
+                elif len(percentages) == 1:
+                    data['change_24h'] = percentages[0]
 
 
-# === Section 3: Main Data Fetching and Filtering Logic ===
-def fetch_data_and_update():
-    global all_known_pairs, api_error, latest_data
+                scraped_data.append(data)
+        except Exception as e:
+            print(f"یک خطای جدی در حین استخراج رخ داد: {e}")
+        finally:
+            await browser.close()
+            return scraped_data
+
+async def main_scraper_loop():
+    """حلقه اصلی که به صورت دوره‌ای داده‌ها را استخراج و ذخیره می‌کند."""
+    DEXSCREENER_URL = "https://dexscreener.com/?rankBy=trendingScoreH6&order=desc&chainIds=solana&minLiq=50000&maxLiq=1000000&minMarketCap=65000&maxMarketCap=10000000&min24HVol=70000&max24HVol=15000000&min24HChg=0.01&max24HChg=10000&min6HChg=0.01&max6HChg=10000"
     
-    base_url = "https://api.dexscreener.com/latest/dex/search"
-    temp_latest_data = []
-    
-    try:
-        # Loop through each chain in our defined order
-        for chain in CHAINS_TO_SCAN:
-            print(f"--- Starting scan for {chain.upper()} ---")
-            # The initial query is broad to get a good pool of candidates
-            params = {'q': f'fdv > {FILTER_CRITERIA["min_fdv"]}'}
-            
-            print(f"Sending initial request for {chain.upper()}...")
-            response = requests.get(base_url, params=params, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-            raw_pairs = data.get('pairs', [])
-            
-            # Update our master list of pairs for the chain
-            for pair in raw_pairs:
-                all_known_pairs[chain][pair['pairAddress']] = pair
-
-            validated_pairs = {}
-            for pair_address, pair in all_known_pairs[chain].items():
-                try:
-                    # Apply the detailed filters
-                    if (
-                        pair.get('chainId') == chain and
-                        pair.get('liquidity', {}).get('usd', 0) > FILTER_CRITERIA["min_liquidity_usd"] and
-                        pair.get('fdv', 0) > FILTER_CRITERIA["min_fdv"] and
-                        pair.get('volume', {}).get('h24', 0) > FILTER_CRITERIA["min_volume_h24"] and
-                        pair.get('priceChange', {}).get('h6', 0) > (FILTER_CRITERIA["min_price_change_h6_percent"] / 100) and
-                        pair.get('priceChange', {}).get('h24', 0) > (FILTER_CRITERIA["min_price_change_h24_percent"] / 100)
-                    ):
-                        validated_pairs[pair_address] = pair
-                except (TypeError, ValueError):
-                    # Skip pair if data is malformed
-                    continue
-            
-            # Clean up the list for the chain, keeping only currently valid pairs
-            all_known_pairs[chain] = validated_pairs
-            
-            # NEW: Add chain data along with the count of found pairs
-            temp_latest_data.append({
-                "chain": chain,
-                "pairs": list(validated_pairs.values()),
-                "count": len(validated_pairs)  # Add the count here
-            })
-            print(f"Scan for {chain.upper()} complete. Final valid pairs: {len(validated_pairs)}")
-
-        # Atomically update the global variable with the fresh data
-        latest_data = temp_latest_data
-        api_error = None
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] All chains updated successfully.")
-    
-    except requests.exceptions.RequestException as e:
-        error_message = f"Error during data fetch: {e}"
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {error_message}")
-        api_error = error_message
-
-def background_task():
-    """Runs the data fetching process in a loop."""
     while True:
-        fetch_data_and_update()
-        # Sleep for 5 minutes (300 seconds) before the next run
-        time.sleep(300)
+        print("\n" + "="*50)
+        print(f"شروع دور جدید استخراج در ساعت: {datetime.now().strftime('%H:%M:%S')}")
+        results = await scrape_single_page(DEXSCREENER_URL)
+        
+        if results:
+            output = {
+                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "token_count": len(results),
+                "tokens": results
+            }
+            with open("data.json", "w", encoding="utf-8") as f:
+                json.dump(output, f, ensure_ascii=False, indent=4)
+            print(f"{len(results)} توکن با موفقیت در data.json ذخیره شد.")
+        else:
+            print("هیچ داده‌ای برای ذخیره وجود نداشت.")
+        
+        print(f"استخراج این دور به پایان رسید. انتظار به مدت ۱۰ دقیقه تا دور بعدی...")
+        print("="*50)
+        time.sleep(600) # انتظار به مدت ۱۰ دقیقه (۶۰۰ ثانیه)
 
-# === Section 4: Flask Web Server Setup ===
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    """Serves the main HTML page."""
-    return render_template('index.html')
-
-@app.route('/api/data')
-def get_data():
-    """API endpoint to provide the fetched data to the frontend."""
-    return jsonify({
-        'data': latest_data,
-        'filters': FILTER_CRITERIA, # Send filters to frontend
-        'error': api_error
-    })
-
-def run_web_server():
-    """Starts the Flask web server."""
-    # Use the PORT environment variable provided by the platform, or default to 10000
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
-
-# === Section 5: Application Entry Point ===
 if __name__ == "__main__":
-    print("Starting background data fetching task...")
-    task_thread = Thread(target=background_task)
-    task_thread.daemon = True
-    task_thread.start()
+    # اجرای وب سرور در یک ترد (Thread) جداگانه
+    server_thread = threading.Thread(target=run_server)
+    server_thread.daemon = True
+    server_thread.start()
     
-    print("Starting web server...")
-    run_web_server()
+    # باز کردن داشبورد در مرورگر پس از یک تاخیر کوتاه
+    webbrowser.open_new_tab(f'http://localhost:{PORT}')
+    
+    # شروع حلقه اصلی استخراج داده
+    asyncio.run(main_scraper_loop())
+
