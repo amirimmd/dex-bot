@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>داشبورد توکن‌های DexScreener</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap');
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background-color: #1a202c;
+            color: #e2e8f0;
+        }
+        .table-container {
+            max-height: 80vh;
+        }
+        .positive { color: #48bb78; }
+        .negative { color: #f56565; }
+        .sticky-header th {
+            position: sticky;
+            top: 0;
+            background-color: #2d3748;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-white">داشبورد توکن‌های ترند Solana</h1>
+            <p id="last-updated" class="text-gray-400 mt-2">در حال بارگذاری اطلاعات...</p>
+        </header>
+
+        <main>
+            <div class="bg-gray-800 rounded-lg shadow-xl overflow-hidden">
+                <div class="table-container overflow-y-auto">
+                    <table class="min-w-full divide-y divide-gray-700">
+                        <thead class="sticky-header">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">رتبه</th>
+                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">توکن</th>
+                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">قیمت</th>
+                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">تغییرات (6h)</th>
+                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">تغییرات (24h)</th>
+                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">حجم معاملات (24h)</th>
+                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">نقدینگی</th>
+                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">ارزش بازار</th>
+                            </tr>
+                        </thead>
+                        <tbody id="token-table-body" class="bg-gray-800 divide-y divide-gray-700">
+                            <tr>
+                                <td colspan="8" class="text-center py-10 text-gray-400">
+                                    در حال بارگذاری داده‌ها از data.json...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const tokenTableBody = document.getElementById('token-table-body');
+        const lastUpdatedElement = document.getElementById('last-updated');
+
+        function formatChange(change) {
+            if (!change || change === 'N/A') return `<span class="text-gray-400">${change}</span>`;
+            const isPositive = !change.startsWith('-');
+            return `<span class="${isPositive ? 'positive' : 'negative'}">${change}</span>`;
+        }
+
+        async function loadAndRenderData() {
+            try {
+                // اضافه کردن یک پارامتر برای جلوگیری از کش شدن فایل
+                const response = await fetch(`data.json?t=${new Date().getTime()}`);
+                if (!response.ok) {
+                    throw new Error(`فایل data.json پیدا نشد یا خطایی در بارگذاری آن وجود دارد. (وضعیت: ${response.status})`);
+                }
+                const data = await response.json();
+
+                lastUpdatedElement.textContent = `آخرین بروزرسانی سرور: ${data.last_updated}`;
+                tokenTableBody.innerHTML = ''; // پاک کردن ردیف‌های قبلی
+
+                if (data.tokens && data.tokens.length > 0) {
+                    data.tokens.forEach(token => {
+                        const row = `
+                            <tr class="hover:bg-gray-700 transition-colors duration-150">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">${token.rank}</td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <a href="${token.href}" target="_blank" class="text-sm font-bold text-cyan-400 hover:text-cyan-300">
+                                        ${token.symbol}
+                                    </a>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${token.price}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">${formatChange(token.change_6h)}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">${formatChange(token.change_24h)}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${token.volume}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${token.liquidity}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${token.market_cap}</td>
+                            </tr>
+                        `;
+                        tokenTableBody.innerHTML += row;
+                    });
+                } else {
+                     tokenTableBody.innerHTML = `<tr><td colspan="8" class="text-center py-10 text-gray-400">هیچ توکنی برای نمایش یافت نشد.</td></tr>`;
+                }
+
+            } catch (error) {
+                console.error('خطا در بارگذاری داده‌ها:', error);
+                lastUpdatedElement.textContent = 'خطا در بارگذاری اطلاعات.';
+                tokenTableBody.innerHTML = `<tr><td colspan="8" class="text-center py-10 text-red-400">${error.message}</td></tr>`;
+            }
+        }
+
+        // بارگذاری اولیه داده‌ها در زمان باز شدن صفحه
+        loadAndRenderData();
+
+        // تنظیم یک وقفه زمانی برای بروزرسانی خودکار داده‌ها هر ۳۰ ثانیه
+        setInterval(loadAndRenderData, 30000);
+    </script>
+
+</body>
+</html>
+
