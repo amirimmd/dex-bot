@@ -1,59 +1,75 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>داشبورد توکن‌های DexScreener</title>
+    <title>DexScreener Security Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap');
-        body {
-            font-family: 'Vazirmatn', sans-serif;
-            background-color: #1a202c;
-            color: #e2e8f0;
-        }
-        .table-container {
-            max-height: 80vh;
-        }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #1a202c; color: #e2e8f0; }
+        .table-container { max-height: 75vh; }
         .positive { color: #48bb78; }
         .negative { color: #f56565; }
-        .sticky-header th {
-            position: sticky;
-            top: 0;
-            background-color: #2d3748;
-        }
+        .sticky-header th { position: sticky; top: 0; background-color: #2d3748; z-index: 10; }
+        .sortable { cursor: pointer; }
+        .sort-indicator { display: inline-block; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; margin-left: 5px; vertical-align: middle; opacity: 0.5; }
+        .sort-asc { border-bottom: 5px solid white; }
+        .sort-desc { border-top: 5px solid white; }
+        .active-sort .sort-indicator { opacity: 1; }
+        .tooltip { position: relative; display: inline-block; }
+        .tooltip .tooltiptext { visibility: hidden; width: 140px; background-color: #111827; color: #fff; text-align: center; border-radius: 6px; padding: 5px 0; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -70px; opacity: 0; transition: opacity 0.3s; }
+        .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
+        .check-icon, .cross-icon, .question-icon { width: 20px; height: 20px; }
     </style>
 </head>
 <body class="p-4 md:p-8">
 
-    <div class="max-w-7xl mx-auto">
-        <header class="text-center mb-8">
-            <h1 class="text-3xl md:text-4xl font-bold text-white">داشبورد توکن‌های ترند Solana</h1>
-            <p id="last-updated" class="text-gray-400 mt-2">در حال بارگذاری اطلاعات...</p>
+    <div class="max-w-screen-xl mx-auto">
+        <header class="text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-white">Solana Trending Tokens Security Dashboard</h1>
+            <p id="update-cycle-display" class="text-yellow-400 mt-2 font-bold text-lg"></p>
+            <p id="last-updated" class="text-gray-400 mt-1">Loading data...</p>
         </header>
 
+        <div id="security-filters" class="bg-gray-800 p-4 rounded-lg mb-6 flex flex-wrap gap-4 items-center justify-center">
+            <label class="font-bold text-white">Security Filters:</label>
+            <div class="flex items-center">
+                <input id="filter-mint" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                <label for="filter-mint" class="ml-2 text-sm text-gray-300">Mint Revoked</label>
+            </div>
+            <div class="flex items-center">
+                <input id="filter-freeze" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                <label for="filter-freeze" class="ml-2 text-sm text-gray-300">No Blacklist (Freeze Revoked)</label>
+            </div>
+            <div class="flex items-center">
+                <input id="filter-lp" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                <label for="filter-lp" class="ml-2 text-sm text-gray-300">LP Burned</label>
+            </div>
+            <div class="flex items-center">
+                <input id="filter-holders" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                <label for="filter-holders" class="ml-2 text-sm text-gray-300">Top 10 Holders &lt; 20%</label>
+            </div>
+        </div>
+
         <main>
-            <div class="bg-gray-800 rounded-lg shadow-xl overflow-hidden">
+            <div class="bg-gray-900 rounded-lg shadow-xl overflow-hidden">
                 <div class="table-container overflow-y-auto">
                     <table class="min-w-full divide-y divide-gray-700">
                         <thead class="sticky-header">
                             <tr>
-                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">رتبه</th>
-                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">توکن</th>
-                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">قیمت</th>
-                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">تغییرات (6h)</th>
-                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">تغییرات (24h)</th>
-                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">حجم معاملات (24h)</th>
-                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">نقدینگی</th>
-                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">ارزش بازار</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider sortable" data-sort-key="rank">Rank</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider sortable" data-sort-key="count">Seen</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider sortable" data-sort-key="symbol">Token</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Security Checks</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider sortable" data-sort-key="price">Price</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider sortable" data-sort-key="change_24h">24h Change</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider sortable" data-sort-key="volume">Volume</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider sortable" data-sort-key="market_cap">Market Cap</th>
                             </tr>
                         </thead>
                         <tbody id="token-table-body" class="bg-gray-800 divide-y divide-gray-700">
-                            <tr>
-                                <td colspan="8" class="text-center py-10 text-gray-400">
-                                    در حال بارگذاری داده‌ها از data.json...
-                                </td>
-                            </tr>
+                            <!-- Rows will be injected here by JavaScript -->
                         </tbody>
                     </table>
                 </div>
@@ -64,63 +80,167 @@
     <script>
         const tokenTableBody = document.getElementById('token-table-body');
         const lastUpdatedElement = document.getElementById('last-updated');
+        const updateCycleDisplay = document.getElementById('update-cycle-display');
+        
+        let fullTokenData = [];
+        let currentSort = { key: 'count', direction: 'desc' };
 
+        const checkIcon = `<svg class="check-icon text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`;
+        const crossIcon = `<svg class="cross-icon text-red-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`;
+        const questionIcon = `<svg class="question-icon text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`;
+
+        function getSecurityIcon(value, tooltipText) {
+            let icon;
+            if (value === true) icon = checkIcon;
+            else if (value === false) icon = crossIcon;
+            else icon = questionIcon;
+            return `<div class="tooltip">${icon}<span class="tooltiptext">${tooltipText}</span></div>`;
+        }
+        
+        function renderTable(tokens) {
+            tokenTableBody.innerHTML = '';
+            if (tokens && tokens.length > 0) {
+                sortData(tokens);
+                updateSortIndicators();
+                tokens.forEach(token => {
+                    const topHoldersText = token.top_10_percent !== null ? `Top 10: ${token.top_10_percent.toFixed(2)}%` : 'Top 10: N/A';
+                    const securityChecksHTML = `
+                        <div class="flex items-center space-x-2">
+                            ${getSecurityIcon(token.mint_revoked, 'Mint Revoked')}
+                            ${getSecurityIcon(token.freeze_authority_revoked, 'Freeze Authority Revoked')}
+                            ${getSecurityIcon(token.lp_burned, 'LP Burned')}
+                            ${getSecurityIcon(token.top_10_percent !== null && token.top_10_percent < 20, topHoldersText)}
+                        </div>
+                    `;
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-gray-700 transition-colors duration-150';
+                    row.innerHTML = `
+                        <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-white">${token.rank}</td>
+                        <td class="px-4 py-4 whitespace-nowrap text-sm font-bold text-yellow-300">${token.count || 1}</td>
+                        <td class="px-4 py-4 whitespace-nowrap">
+                            <a href="${token.href}" target="_blank" class="block text-sm font-bold text-cyan-400 hover:text-cyan-300">${token.symbol}</a>
+                            <div class="text-xs text-gray-400">${token.name}</div>
+                        </td>
+                        <td class="px-4 py-4 whitespace-nowrap">${securityChecksHTML}</td>
+                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-300">${token.price}</td>
+                        <td class="px-4 py-4 whitespace-nowrap text-sm">${formatChange(token.change_24h)}</td>
+                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-300">${token.volume}</td>
+                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-300">${token.market_cap}</td>
+                    `;
+                    tokenTableBody.appendChild(row);
+                });
+            } else {
+                 tokenTableBody.innerHTML = `<tr><td colspan="8" class="text-center py-10 text-gray-400">No tokens match the current filters.</td></tr>`;
+            }
+        }
+
+        function applyFilters() {
+            const filterMint = document.getElementById('filter-mint').checked;
+            const filterFreeze = document.getElementById('filter-freeze').checked;
+            const filterLp = document.getElementById('filter-lp').checked;
+            const filterHolders = document.getElementById('filter-holders').checked;
+
+            const filteredTokens = fullTokenData.filter(token => {
+                if (filterMint && token.mint_revoked !== true) return false;
+                if (filterFreeze && token.freeze_authority_revoked !== true) return false;
+                if (filterLp && token.lp_burned !== true) return false;
+                if (filterHolders && (token.top_10_percent === null || token.top_10_percent >= 20)) return false;
+                return true;
+            });
+            renderTable(filteredTokens);
+        }
+
+        async function loadAndRenderData() {
+            try {
+                const response = await fetch(`data.json?t=${new Date().getTime()}`);
+                if (!response.ok) throw new Error(`Could not load data.json (Status: ${response.status})`);
+                
+                const data = await response.json();
+                lastUpdatedElement.textContent = `Last Server Update: ${data.last_updated}`;
+                updateCycleDisplay.textContent = `Update Cycle #${data.update_cycle || 0}`;
+                fullTokenData = data.tokens || [];
+                applyFilters();
+
+            } catch (error) {
+                console.error('Error loading data:', error);
+                lastUpdatedElement.textContent = 'Error loading information.';
+                tokenTableBody.innerHTML = `<tr><td colspan="8" class="text-center py-10 text-red-400">${error.message}</td></tr>`;
+            }
+        }
+        
         function formatChange(change) {
             if (!change || change === 'N/A') return `<span class="text-gray-400">${change}</span>`;
             const isPositive = !change.startsWith('-');
             return `<span class="${isPositive ? 'positive' : 'negative'}">${change}</span>`;
         }
-
-        async function loadAndRenderData() {
-            try {
-                // اضافه کردن یک پارامتر برای جلوگیری از کش شدن فایل
-                const response = await fetch(`data.json?t=${new Date().getTime()}`);
-                if (!response.ok) {
-                    throw new Error(`فایل data.json پیدا نشد یا خطایی در بارگذاری آن وجود دارد. (وضعیت: ${response.status})`);
-                }
-                const data = await response.json();
-
-                lastUpdatedElement.textContent = `آخرین بروزرسانی سرور: ${data.last_updated}`;
-                tokenTableBody.innerHTML = ''; // پاک کردن ردیف‌های قبلی
-
-                if (data.tokens && data.tokens.length > 0) {
-                    data.tokens.forEach(token => {
-                        const row = `
-                            <tr class="hover:bg-gray-700 transition-colors duration-150">
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">${token.rank}</td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <a href="${token.href}" target="_blank" class="text-sm font-bold text-cyan-400 hover:text-cyan-300">
-                                        ${token.symbol}
-                                    </a>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${token.price}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm">${formatChange(token.change_6h)}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm">${formatChange(token.change_24h)}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${token.volume}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${token.liquidity}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${token.market_cap}</td>
-                            </tr>
-                        `;
-                        tokenTableBody.innerHTML += row;
-                    });
-                } else {
-                     tokenTableBody.innerHTML = `<tr><td colspan="8" class="text-center py-10 text-gray-400">هیچ توکنی برای نمایش یافت نشد.</td></tr>`;
-                }
-
-            } catch (error) {
-                console.error('خطا در بارگذاری داده‌ها:', error);
-                lastUpdatedElement.textContent = 'خطا در بارگذاری اطلاعات.';
-                tokenTableBody.innerHTML = `<tr><td colspan="8" class="text-center py-10 text-red-400">${error.message}</td></tr>`;
-            }
+        
+        function parseValue(value) {
+            if (typeof value !== 'string' || value === 'N/A' || value === null) return -Infinity;
+            const cleaned = value.replace(/[$,%#]/g, '');
+            let multiplier = 1;
+            if (cleaned.endsWith('K')) multiplier = 1e3;
+            else if (cleaned.endsWith('M')) multiplier = 1e6;
+            else if (cleaned.endsWith('B')) multiplier = 1e9;
+            else if (cleaned.endsWith('T')) multiplier = 1e12;
+            return parseFloat(cleaned) * multiplier;
         }
 
-        // بارگذاری اولیه داده‌ها در زمان باز شدن صفحه
-        loadAndRenderData();
+        function sortData(tokens) {
+            tokens.sort((a, b) => {
+                let valA = a[currentSort.key];
+                let valB = b[currentSort.key];
 
-        // تنظیم یک وقفه زمانی برای بروزرسانی خودکار داده‌ها هر ۳۰ ثانیه
+                if (['rank', 'count'].includes(currentSort.key)) {
+                    valA = parseInt(String(valA).replace('#', '')) || 0;
+                    valB = parseInt(String(valB).replace('#', '')) || 0;
+                } else if (currentSort.key !== 'symbol' && currentSort.key !== 'name') {
+                    valA = parseValue(valA);
+                    valB = parseValue(valB);
+                } else {
+                     valA = String(valA).toLowerCase();
+                     valB = String(valB).toLowerCase();
+                }
+
+                if (valA < valB) return currentSort.direction === 'asc' ? -1 : 1;
+                if (valA > valB) return currentSort.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+        
+        function updateSortIndicators() {
+            document.querySelectorAll('.sortable').forEach(th => {
+                th.classList.remove('active-sort');
+                const indicator = th.querySelector('.sort-indicator');
+                if (indicator) {
+                    indicator.className = 'sort-indicator';
+                }
+                if (th.dataset.sortKey === currentSort.key) {
+                    th.classList.add('active-sort');
+                    if (indicator) {
+                       indicator.classList.add(currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+                    }
+                }
+            });
+        }
+
+        document.querySelectorAll('.sortable').forEach(th => {
+            th.addEventListener('click', () => {
+                const sortKey = th.dataset.sortKey;
+                if (currentSort.key === sortKey) {
+                    currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+                } else {
+                    currentSort.key = sortKey;
+                    currentSort.direction = 'desc';
+                }
+                applyFilters();
+            });
+        });
+
+        document.getElementById('security-filters').addEventListener('change', applyFilters);
+
+        loadAndRenderData();
         setInterval(loadAndRenderData, 30000);
     </script>
-
 </body>
 </html>
 
